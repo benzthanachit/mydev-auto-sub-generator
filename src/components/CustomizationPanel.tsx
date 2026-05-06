@@ -10,8 +10,8 @@ interface CustomizationPanelProps {
 const FONTS = [
   { name: "Inter", value: "var(--font-inter)" },
   { name: "Roboto", value: "var(--font-roboto)" },
-  { name: "Montserrat", value: "var(--font-montserrat)" },
-  { name: "Bangers", value: "var(--font-bangers)" },
+  { name: "Kanit", value: "var(--font-kanit)" },
+  { name: "Prompt", value: "var(--font-prompt)" },
 ];
 
 export function CustomizationPanel({ settings, onChange }: CustomizationPanelProps) {
@@ -93,10 +93,36 @@ export function CustomizationPanel({ settings, onChange }: CustomizationPanelPro
         />
       </div>
 
+      <div className="space-y-2">
+        <label className="flex justify-between font-medium">
+          Word Spacing
+          <span className="text-zinc-500">{settings.wordSpacing}px</span>
+        </label>
+        <input
+          type="range"
+          min="0"
+          max="50"
+          step="1"
+          value={settings.wordSpacing}
+          onChange={(e) => handleChange("wordSpacing", parseInt(e.target.value))}
+          className="w-full accent-yellow-500"
+        />
+      </div>
+
       <hr className="border-zinc-800" />
 
       {/* Colors */}
       <div className="space-y-4">
+        <label className="flex items-center gap-2 cursor-pointer font-medium">
+          <input
+            type="checkbox"
+            checked={settings.enableHighlight}
+            onChange={(e) => handleChange("enableHighlight", e.target.checked)}
+            className="w-4 h-4 accent-yellow-500 rounded border-zinc-700 bg-zinc-800"
+          />
+          Enable Highlight Effect
+        </label>
+        
         <div className="flex items-center justify-between">
           <label className="font-medium">Text Color</label>
           <input
@@ -107,15 +133,17 @@ export function CustomizationPanel({ settings, onChange }: CustomizationPanelPro
           />
         </div>
         
-        <div className="flex items-center justify-between">
-          <label className="font-medium">Highlight Color</label>
-          <input
-            type="color"
-            value={settings.highlightColor}
-            onChange={(e) => handleChange("highlightColor", e.target.value)}
-            className="w-8 h-8 rounded bg-transparent cursor-pointer"
-          />
-        </div>
+        {settings.enableHighlight && (
+          <div className="flex items-center justify-between">
+            <label className="font-medium">Highlight Color</label>
+            <input
+              type="color"
+              value={settings.highlightColor}
+              onChange={(e) => handleChange("highlightColor", e.target.value)}
+              className="w-8 h-8 rounded bg-transparent cursor-pointer"
+            />
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <label className="font-medium">Stroke Color</label>
@@ -126,6 +154,55 @@ export function CustomizationPanel({ settings, onChange }: CustomizationPanelPro
             className="w-8 h-8 rounded bg-transparent cursor-pointer"
           />
         </div>
+      </div>
+
+      <hr className="border-zinc-800" />
+
+      {/* Background Settings */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <label className="font-medium">Background Color</label>
+          <input
+            type="color"
+            value={settings.bgColor}
+            onChange={(e) => handleChange("bgColor", e.target.value)}
+            className="w-8 h-8 rounded bg-transparent cursor-pointer"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="flex justify-between font-medium">
+            Background Opacity
+            <span className="text-zinc-500">{settings.bgOpacity}%</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={settings.bgOpacity}
+            onChange={(e) => handleChange("bgOpacity", parseInt(e.target.value))}
+            className="w-full accent-yellow-500"
+          />
+        </div>
+
+        {settings.bgOpacity > 0 && (
+          <div className="space-y-2">
+            <label className="flex justify-between font-medium">
+              Background Padding
+              <span className="text-zinc-500">{settings.bgPadding}px</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="50"
+              step="1"
+              value={settings.bgPadding}
+              onChange={(e) => handleChange("bgPadding", parseInt(e.target.value))}
+              className="w-full accent-yellow-500"
+            />
+          </div>
+        )}
       </div>
 
       <hr className="border-zinc-800" />

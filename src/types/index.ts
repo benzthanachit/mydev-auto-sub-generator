@@ -25,11 +25,16 @@ export interface CaptionSettings {
   yPosition: number;
   fontSize: number;
   maxGapTime: number; // seconds
+  wordSpacing: number; // px
+  bgColor: string; // hex
+  bgOpacity: number; // 0-100
+  bgPadding: number; // px
+  enableHighlight: boolean;
 }
 
 export const DEFAULT_SETTINGS: CaptionSettings = {
   wordsPerScreen: 3,
-  fontFamily: "var(--font-inter)",
+  fontFamily: "var(--font-kanit)",
   textColor: "#ffffff",
   highlightColor: "#eab308", // Yellow
   strokeColor: "#000000",
@@ -41,4 +46,9 @@ export const DEFAULT_SETTINGS: CaptionSettings = {
   yPosition: 80, // percentage from top
   fontSize: 48,
   maxGapTime: 1.0, // 1 second
+  wordSpacing: 8,
+  bgColor: "#000000",
+  bgOpacity: 0, // 0 means no background
+  bgPadding: 16,
+  enableHighlight: true,
 };

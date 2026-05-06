@@ -3,8 +3,8 @@
 @theme inline {
   --font-inter: var(--font-inter);
   --font-roboto: var(--font-roboto);
-  --font-montserrat: var(--font-montserrat);
-  --font-bangers: var(--font-bangers);
+  --font-kanit: var(--font-kanit);
+  --font-prompt: var(--font-prompt);
 }
 
 @layer base {

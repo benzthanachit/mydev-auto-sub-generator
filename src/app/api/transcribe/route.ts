@@ -43,23 +43,41 @@ export async function POST(req: NextRequest) {
       ]
     `;
 
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type,
-        },
-      },
-    ]);
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: file.type,
+              },
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
 
     const responseText = result.response.text();
     
     // Attempt to parse the response text as JSON
     let transcription = [];
     try {
-      // Strip markdown code block backticks if Gemini accidentally includes them
-      const cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+      let cleanJson = responseText.trim();
+      
+      // Extract everything between the first '[' and the last ']'
+      const startIndex = cleanJson.indexOf('[');
+      const endIndex = cleanJson.lastIndexOf(']');
+      
+      if (startIndex !== -1 && endIndex !== -1) {
+        cleanJson = cleanJson.substring(startIndex, endIndex + 1);
+      }
+      
       transcription = JSON.parse(cleanJson);
     } catch (parseError) {
       console.error("Failed to parse Gemini response as JSON:", responseText);

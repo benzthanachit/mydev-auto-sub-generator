@@ -4,6 +4,7 @@ import { CaptionSettings, ChunkedTranscript } from '@/types';
 
 // Convert #RRGGBB to ASS &H00BBGGRR& format
 function hexToAssColor(hex: string) {
+  if (!hex) return "&H00FFFFFF&"; // fallback to white
   hex = hex.replace("#", "");
   if (hex.length === 3) {
     hex = hex.split("").map((c) => c + c).join("");
@@ -26,12 +27,41 @@ function formatAssTime(seconds: number) {
 
 // Clean font family string (e.g. "var(--font-inter)" to "Inter")
 // In a real app we might need to actually include the font file in ffmpeg's virtual FS.
+const FONT_URLS: Record<string, string> = {
+  "Inter": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf", // Fallback to Roboto
+  "Roboto": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf",
+  "Kanit": "https://raw.githubusercontent.com/google/fonts/main/ofl/kanit/Kanit-Regular.ttf",
+  "Prompt": "https://raw.githubusercontent.com/google/fonts/main/ofl/prompt/Prompt-Regular.ttf"
+};
+
 function getCleanFontName(fontFamily: string) {
   if (fontFamily.includes("inter")) return "Inter";
   if (fontFamily.includes("roboto")) return "Roboto";
-  if (fontFamily.includes("montserrat")) return "Montserrat";
-  if (fontFamily.includes("bangers")) return "Bangers";
+  if (fontFamily.includes("kanit")) return "Kanit";
+  if (fontFamily.includes("prompt")) return "Prompt";
   return "Arial";
+}
+
+// Convert 0-100 opacity to ASS alpha (0-255 inverted, Hex format)
+function getAssAlpha(opacityPercent: number) {
+  // 100% opacity = 0 (opaque in ASS)
+  // 0% opacity = 255 (transparent in ASS)
+  const alphaObj = Math.floor(255 - ((opacityPercent || 0) / 100) * 255);
+  return alphaObj.toString(16).padStart(2, "0").toUpperCase();
+}
+
+// Convert #RRGGBB and opacity to ASS &HAABBGGRR& format
+function hexToAssColorWithAlpha(hex: string, opacityPercent: number) {
+  if (!hex) return `&H${getAssAlpha(opacityPercent)}000000&`; // fallback to black bg
+  hex = hex.replace("#", "");
+  if (hex.length === 3) {
+    hex = hex.split("").map((c) => c + c).join("");
+  }
+  const r = hex.substring(0, 2);
+  const g = hex.substring(2, 4);
+  const b = hex.substring(4, 6);
+  const a = getAssAlpha(opacityPercent);
+  return `&H${a}${b}${g}${r}&`;
 }
 
 export function generateAssFile(
@@ -44,17 +74,15 @@ export function generateAssFile(
   const textColor = hexToAssColor(settings.textColor);
   const highlightColor = hexToAssColor(settings.highlightColor);
   const strokeColor = hexToAssColor(settings.strokeColor);
-  
-  // Convert RGBA shadow to ASS color. Assuming rgba(0,0,0,0.8) for now.
   const shadowColor = "&H00000000&"; // Simplified black shadow
   
-  // Calculate vertical margin from Y position percentage
-  // Alignment 8 is Top Center, 2 is Bottom Center, 5 is Middle Center
-  // Let's use Alignment 2 (Bottom Center) and marginV to position it
-  // Or better, use Alignment 5 (Middle Center) and specify X,Y with pos
-  // But standard ASS MarginV with Alignment=8 (Top) is easiest.
   const marginV = Math.floor((settings.yPosition / 100) * videoHeight) - (settings.fontSize / 2);
 
+  // Background Box Style (Layer 0)
+  const hasBg = settings.bgOpacity > 0;
+  const bgColorAss = hexToAssColorWithAlpha(settings.bgColor, settings.bgOpacity);
+  const bgTransparentText = "&HFF000000&"; // Invisible text
+  
   const header = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${videoWidth}
@@ -64,40 +92,60 @@ WrapStyle: 1
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,${fontName},${settings.fontSize},${textColor},${textColor},${strokeColor},${shadowColor},-1,0,0,0,100,100,0,0,1,${settings.strokeWidth},${settings.shadowOffsetX || settings.shadowBlur},8,10,10,${Math.max(0, marginV)},1
-
+${hasBg ? `Style: BgBox,${fontName},${settings.fontSize},${bgTransparentText},${bgTransparentText},${bgColorAss},&H00000000&,-1,0,0,0,100,100,0,0,3,${settings.bgPadding},0,8,10,10,${Math.max(0, marginV)},1\n` : ''}
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
   let events = "";
-
+  
   for (const chunk of chunks) {
-    // For each word in the chunk, we need to create a separate ASS event for its exact duration
-    // so it can be highlighted, while the rest of the chunk is normal color.
+    const spaceStr = settings.wordSpacing > 0 ? `{\\hsp${settings.wordSpacing}}` : " ";
     
-    // Instead of doing it word-by-word with separate events covering the whole chunk time,
-    // we generate a single text line for a specific sub-time range.
-    
+    if (!settings.enableHighlight) {
+      const start = formatAssTime(chunk.start_time);
+      const end = formatAssTime(chunk.end_time);
+      const textWithColors = `{\\c${textColor}}${chunk.words.map(w => w.word).join(spaceStr)}`;
+      const textWithoutColors = chunk.words.map(w => w.word).join(spaceStr);
+
+      if (hasBg) {
+        events += `Dialogue: 0,${start},${end},BgBox,,0,0,0,,${textWithoutColors}\n`;
+        events += `Dialogue: 1,${start},${end},Default,,0,0,0,,${textWithColors}\n`;
+      } else {
+        events += `Dialogue: 0,${start},${end},Default,,0,0,0,,${textWithColors}\n`;
+      }
+      continue;
+    }
+
     for (let i = 0; i < chunk.words.length; i++) {
       const activeWord = chunk.words[i];
       const start = formatAssTime(activeWord.start_time);
-      
-      // The end time of this highlight state is the start of the next word, or the chunk end.
       const end = i < chunk.words.length - 1 
         ? formatAssTime(chunk.words[i + 1].start_time)
         : formatAssTime(activeWord.end_time);
 
-      let text = "";
+      let textWithColors = "";
+      let textWithoutColors = "";
+      
       for (let j = 0; j < chunk.words.length; j++) {
         const w = chunk.words[j];
-        if (j === i) {
-          text += `{\\c${highlightColor}}{\\fscx110\\fscy110}${w.word}{\\fscx100\\fscy100} `;
+        if (j === i && settings.enableHighlight) {
+          textWithColors += `{\\c${highlightColor}}{\\fscx110\\fscy110}${w.word}{\\fscx100\\fscy100}${spaceStr}`;
         } else {
-          text += `{\\c${textColor}}${w.word} `;
+          textWithColors += `{\\c${textColor}}${w.word}${spaceStr}`;
         }
+        textWithoutColors += `${w.word}${spaceStr}`;
       }
       
-      events += `Dialogue: 0,${start},${end},Default,,0,0,0,,${text.trim()}\n`;
+      textWithColors = textWithColors.trim();
+      textWithoutColors = textWithoutColors.trim();
+      
+      if (hasBg) {
+        events += `Dialogue: 0,${start},${end},BgBox,,0,0,0,,${textWithoutColors}\n`;
+        events += `Dialogue: 1,${start},${end},Default,,0,0,0,,${textWithColors}\n`;
+      } else {
+        events += `Dialogue: 0,${start},${end},Default,,0,0,0,,${textWithColors}\n`;
+      }
     }
   }
 
@@ -140,7 +188,6 @@ export async function exportVideo(
 
   const videoName = 'input.mp4';
   const assName = 'subs.ass';
-  const fontName = 'font.ttf';
   const outputName = 'output.mp4';
 
   // Get exact video dimensions
@@ -150,18 +197,28 @@ export async function exportVideo(
   await ffmpeg.writeFile(videoName, await fetchFile(videoFile));
 
   // Fetch a default font so ffmpeg can render text (ffmpeg.wasm has no built-in fonts)
-  // We use Roboto Regular as a safe fallback
-  const fontData = await fetchFile('https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Regular.ttf');
+  const cleanFontName = getCleanFontName(settings.fontFamily);
+  const fontName = `${cleanFontName}.ttf`;
+  const fontUrl = FONT_URLS[cleanFontName] || FONT_URLS["Kanit"]; // Fallback to Kanit to ensure Thai support
+  const fontData = await fetchFile(fontUrl);
   await ffmpeg.writeFile(fontName, fontData);
+
+  // ALWAYS download Kanit as a system-level fallback in the virtual FS!
+  // This guarantees that if the user selects a font like Roboto (which has no Thai), 
+  // libass will automatically fall back to Kanit for Thai characters instead of rendering boxes.
+  if (cleanFontName !== "Kanit") {
+    const fallbackData = await fetchFile(FONT_URLS["Kanit"]);
+    await ffmpeg.writeFile("Kanit-Fallback.ttf", fallbackData);
+  }
 
   // Provide exact dimensions to ASS generator
   const assContent = generateAssFile(chunks, settings, dims.width, dims.height);
   await ffmpeg.writeFile(assName, new TextEncoder().encode(assContent));
 
-  // Run FFmpeg command. fontsdir=/ so it finds font.ttf
+  // Run FFmpeg command. fontsdir=. so it finds font.ttf in the current working directory
   await ffmpeg.exec([
     '-i', videoName,
-    '-vf', `ass=${assName}:fontsdir=/`,
+    '-vf', `ass=${assName}:fontsdir=.`,
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-c:a', 'copy',

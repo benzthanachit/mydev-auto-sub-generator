@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Roboto, Montserrat, Bangers } from "next/font/google";
+import { Inter, Roboto, Kanit, Prompt } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -13,15 +13,16 @@ const roboto = Roboto({
   subsets: ["latin"],
 });
 
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
-  subsets: ["latin"],
+const kanit = Kanit({
+  variable: "--font-kanit",
+  subsets: ["latin", "thai"],
+  weight: ["400", "700", "900"],
 });
 
-const bangers = Bangers({
-  weight: "400",
-  variable: "--font-bangers",
-  subsets: ["latin"],
+const prompt = Prompt({
+  variable: "--font-prompt",
+  subsets: ["latin", "thai"],
+  weight: ["400", "700", "900"],
 });
 
 export const metadata: Metadata = {
@@ -37,7 +38,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${roboto.variable} ${montserrat.variable} ${bangers.variable} h-full antialiased dark`}
+      className={`${inter.variable} ${roboto.variable} ${kanit.variable} ${prompt.variable} h-full antialiased dark`}
     >
       <body className={`min-h-full flex flex-col font-sans bg-zinc-950 text-zinc-50`}>
         {children}

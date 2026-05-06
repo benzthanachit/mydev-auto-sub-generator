@@ -23,7 +23,8 @@ export default function Home() {
     const savedSettings = localStorage.getItem("subtitle-settings");
     if (savedSettings) {
       try {
-        setSettings(JSON.parse(savedSettings));
+        const parsed = JSON.parse(savedSettings);
+        setSettings((prev) => ({ ...DEFAULT_SETTINGS, ...parsed }));
       } catch (e) {
         console.error("Failed to parse saved settings", e);
       }
