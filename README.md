@@ -1,0 +1,1 @@
+# mydev-auto-sub-generator
