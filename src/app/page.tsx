@@ -56,8 +56,16 @@ export default function Home() {
     
     setIsTranscribing(true);
     try {
+      // First, extract audio from the video to save bandwidth and prevent server OOM
+      const { extractAudio } = await import('@/lib/ffmpeg-utils');
+      console.log("Extracting audio from video...");
+      const audioFile = await extractAudio(videoFile, (progress) => {
+        console.log(`Audio extraction progress: ${progress.toFixed(1)}%`);
+      });
+      console.log("Audio extracted successfully, uploading to server...");
+
       const formData = new FormData();
-      formData.append("file", videoFile);
+      formData.append("file", audioFile);
       
       const response = await fetch("/api/transcribe", {
         method: "POST",
@@ -65,16 +73,23 @@ export default function Home() {
       });
       
       if (!response.ok) {
-        throw new Error("Failed to transcribe");
+        let errorMessage = "Failed to transcribe";
+        try {
+          const errData = await response.json();
+          if (errData.error) errorMessage = errData.error;
+        } catch (e) {
+          // ignore
+        }
+        throw new Error(errorMessage);
       }
       
       const data = await response.json();
       if (data.transcription) {
         setTranscription(data.transcription);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Transcription error:", error);
-      alert("Transcription failed. See console for details.");
+      alert(`Transcription failed: ${error.message || "See console for details."}`);
     } finally {
       setIsTranscribing(false);
     }

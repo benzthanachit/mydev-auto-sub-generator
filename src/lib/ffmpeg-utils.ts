@@ -173,18 +173,18 @@ export async function exportVideo(
   settings: CaptionSettings,
   onProgress: (progress: number) => void
 ): Promise<string> {
-  if (!ffmpeg) {
-    ffmpeg = new FFmpeg();
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
-  }
-
-  ffmpeg.on('progress', ({ progress, time }) => {
-    onProgress(progress * 100);
+  const ffmpeg = new FFmpeg();
+  const baseURL = 'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
   });
+
+  const progressHandler = ({ progress, time }: { progress: number, time: number }) => {
+    onProgress(progress * 100);
+  };
+  ffmpeg.on('progress', progressHandler);
 
   const videoName = 'input.mp4';
   const assName = 'subs.ass';
@@ -221,13 +221,60 @@ export async function exportVideo(
     '-vf', `ass=${assName}:fontsdir=.`,
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
+    '-threads', '4', // Limit to 4 cores to prevent worker exhaustion/OOM
+    '-crf', '28', // Lower quality slightly for faster encoding
     '-c:a', 'copy',
     outputName
   ]);
+
+  ffmpeg.off('progress', progressHandler);
 
   const data = await ffmpeg.readFile(outputName);
   const blob = new Blob([data as any], { type: 'video/mp4' });
   const url = URL.createObjectURL(blob);
   
+  ffmpeg.terminate(); // Free memory and Web Workers
+  
   return url;
+}
+
+export async function extractAudio(videoFile: File, onProgress: (p: number) => void): Promise<File> {
+  const ffmpeg = new FFmpeg();
+  const baseURL = 'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+  });
+
+  const progressHandler = ({ progress }: { progress: number }) => {
+    onProgress(progress * 100);
+  };
+  ffmpeg.on('progress', progressHandler);
+
+  const videoName = 'input.mp4';
+  const audioName = 'output.mp3';
+
+  await ffmpeg.writeFile(videoName, await fetchFile(videoFile));
+
+  // Extract audio as 128k mp3 (good enough for transcription)
+  await ffmpeg.exec([
+    '-i', videoName,
+    '-vn', // No video
+    '-acodec', 'libmp3lame',
+    '-ar', '16000', // 16kHz is perfect for speech recognition
+    '-ac', '1', // Mono
+    '-b:a', '64k', // Low bitrate to save memory/upload time
+    audioName
+  ]);
+
+  ffmpeg.off('progress', progressHandler);
+
+  const data = await ffmpeg.readFile(audioName);
+  const blob = new Blob([data as any], { type: 'audio/mp3' });
+  const file = new File([blob], 'audio.mp3', { type: 'audio/mp3' });
+  
+  ffmpeg.terminate(); // Free memory and Web Workers
+  
+  return file;
 }

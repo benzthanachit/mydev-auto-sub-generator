@@ -43,25 +43,50 @@ export async function POST(req: NextRequest) {
       ]
     `;
 
-    const result = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
+    let result;
+    let retries = 3;
+    let delay = 2000;
+
+    while (retries > 0) {
+      try {
+        result = await model.generateContent({
+          contents: [
             {
-              inlineData: {
-                data: base64Data,
-                mimeType: file.type,
-              },
+              role: "user",
+              parts: [
+                { text: prompt },
+                {
+                  inlineData: {
+                    data: base64Data,
+                    mimeType: file.type,
+                  },
+                }
+              ]
             }
-          ]
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
+          }
+        });
+        break; // Success, exit retry loop
+      } catch (err: any) {
+        if (err.status === 503 || err.message?.includes("503") || err.message?.includes("high demand")) {
+          retries--;
+          if (retries === 0) {
+            throw new Error("Gemini API is currently overloaded (503). Please try again in a few minutes.");
+          }
+          console.log(`Gemini 503 error, retrying in ${delay}ms... (${retries} retries left)`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // Exponential backoff
+        } else {
+          throw err; // Re-throw non-503 errors immediately
         }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
       }
-    });
+    }
+
+    if (!result) {
+      throw new Error("Failed to generate content after retries");
+    }
 
     const responseText = result.response.text();
     
@@ -78,10 +103,14 @@ export async function POST(req: NextRequest) {
         cleanJson = cleanJson.substring(startIndex, endIndex + 1);
       }
       
+      // Fix trailing commas which break JSON.parse
+      cleanJson = cleanJson.replace(/,\s*]/g, ']');
+      cleanJson = cleanJson.replace(/,\s*}/g, '}');
+      
       transcription = JSON.parse(cleanJson);
     } catch (parseError) {
-      console.error("Failed to parse Gemini response as JSON:", responseText);
-      throw new Error("Invalid response format from Gemini");
+      console.error("Failed to parse Gemini response as JSON. Raw response:", responseText);
+      throw new Error("AI returned invalid JSON. Please try again. Preview: " + responseText.substring(0, 100).replace(/\n/g, ' '));
     }
 
     return NextResponse.json({ transcription });
