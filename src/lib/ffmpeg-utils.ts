@@ -100,13 +100,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   let events = "";
   
   for (const chunk of chunks) {
+    const visibleWords = chunk.words.filter(w => !w.hidden);
+    if (visibleWords.length === 0) continue;
+
     const spaceStr = settings.wordSpacing > 0 ? `{\\hsp${settings.wordSpacing}}` : " ";
     
     if (!settings.enableHighlight) {
       const start = formatAssTime(chunk.start_time);
       const end = formatAssTime(chunk.end_time);
-      const textWithColors = `{\\c${textColor}}${chunk.words.map(w => w.word).join(spaceStr)}`;
-      const textWithoutColors = chunk.words.map(w => w.word).join(spaceStr);
+      const textWithColors = `{\\c${textColor}}${visibleWords.map(w => w.word).join(spaceStr)}`;
+      const textWithoutColors = visibleWords.map(w => w.word).join(spaceStr);
 
       if (hasBg) {
         events += `Dialogue: 0,${start},${end},BgBox,,0,0,0,,${textWithoutColors}\n`;
@@ -117,19 +120,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       continue;
     }
 
-    for (let i = 0; i < chunk.words.length; i++) {
-      const activeWord = chunk.words[i];
+    for (let i = 0; i < visibleWords.length; i++) {
+      const activeWord = visibleWords[i];
       const start = formatAssTime(activeWord.start_time);
-      const end = i < chunk.words.length - 1 
-        ? formatAssTime(chunk.words[i + 1].start_time)
+      const end = i < visibleWords.length - 1 
+        ? formatAssTime(visibleWords[i + 1].start_time)
         : formatAssTime(activeWord.end_time);
 
       let textWithColors = "";
       let textWithoutColors = "";
       
-      for (let j = 0; j < chunk.words.length; j++) {
-        const w = chunk.words[j];
-        if (j === i && settings.enableHighlight) {
+      for (let j = 0; j < visibleWords.length; j++) {
+        const w = visibleWords[j];
+        if (j === i && settings.enableHighlight && w.highlighted !== false) {
           textWithColors += `{\\c${highlightColor}}{\\fscx110\\fscy110}${w.word}{\\fscx100\\fscy100}${spaceStr}`;
         } else {
           textWithColors += `{\\c${textColor}}${w.word}${spaceStr}`;

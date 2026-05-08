@@ -2,6 +2,8 @@ export interface TranscriptWord {
   word: string;
   start_time: number;
   end_time: number;
+  hidden?: boolean;
+  highlighted?: boolean;
 }
 
 export interface ChunkedTranscript {
@@ -9,6 +11,7 @@ export interface ChunkedTranscript {
   words: TranscriptWord[];
   start_time: number;
   end_time: number;
+  hidden?: boolean;
 }
 
 export interface CaptionSettings {

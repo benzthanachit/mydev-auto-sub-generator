@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Upload, Video, Settings2, Download, Play, Pause, Save, Loader2, Sparkles } from "lucide-react";
+import { Upload, Video, Settings2, Download, Play, Pause, Save, Loader2, Sparkles, Edit3 } from "lucide-react";
 import { TranscriptWord, CaptionSettings, DEFAULT_SETTINGS, ChunkedTranscript } from "@/types";
 import { chunkTranscript } from "@/lib/subtitle-utils";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { CustomizationPanel } from "@/components/CustomizationPanel";
+import { SubtitleEditor } from "@/components/SubtitleEditor";
 
 export default function Home() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -17,6 +18,7 @@ export default function Home() {
   
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState<"styling" | "editor">("styling");
   
   // Load settings from localStorage
   useEffect(() => {
@@ -85,7 +87,29 @@ export default function Home() {
       
       const data = await response.json();
       if (data.transcription) {
-        setTranscription(data.transcription);
+        const parseTime = (val: any): number => {
+          if (val === null || val === undefined) return 0;
+          if (typeof val === "number") return val;
+          if (typeof val === "string") {
+            const cleaned = val.trim().replace(/s$/, "");
+            const parsed = parseFloat(cleaned);
+            return isNaN(parsed) ? 0 : parsed;
+          }
+          return 0;
+        };
+
+        const normalized: TranscriptWord[] = data.transcription.map((w: any) => {
+          const start = w.start_time !== undefined ? w.start_time : (w.startTime !== undefined ? w.startTime : w.start);
+          const end = w.end_time !== undefined ? w.end_time : (w.endTime !== undefined ? w.endTime : w.end);
+          return {
+            word: String(w.word || ""),
+            start_time: parseTime(start),
+            end_time: parseTime(end),
+          };
+        });
+
+        setTranscription(normalized);
+        setActiveTab("editor");
       }
     } catch (error: any) {
       console.error("Transcription error:", error);
@@ -226,25 +250,58 @@ export default function Home() {
 
         {/* Sidebar */}
         <aside className="w-80 bg-zinc-950 border-l border-zinc-800 overflow-y-auto shrink-0 flex flex-col">
-          <div className="p-5 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-950 z-10">
-            <h2 className="font-semibold flex items-center gap-2">
-              <Settings2 className="w-5 h-5 text-zinc-400" />
-              Styling
-            </h2>
-            <button 
-              onClick={handleSaveTemplate}
-              className="p-2 text-zinc-400 hover:text-yellow-400 hover:bg-zinc-900 rounded-lg transition-colors group"
-              title="Save Template"
+          {/* Tabs Header */}
+          <div className="flex border-b border-zinc-800 sticky top-0 bg-zinc-950 z-10 shrink-0">
+            <button
+              onClick={() => setActiveTab("styling")}
+              className={`flex-1 py-4 text-sm font-semibold flex items-center justify-center gap-2 border-b-2 transition-all ${
+                activeTab === "styling"
+                  ? "border-yellow-500 text-yellow-500 bg-zinc-900/30"
+                  : "border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/10"
+              }`}
             >
-              <Save className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <Settings2 className="w-4 h-4" />
+              Styling
+            </button>
+            <button
+              onClick={() => setActiveTab("editor")}
+              className={`flex-1 py-4 text-sm font-semibold flex items-center justify-center gap-2 border-b-2 transition-all ${
+                activeTab === "editor"
+                  ? "border-yellow-500 text-yellow-500 bg-zinc-900/30"
+                  : "border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/10"
+              }`}
+            >
+              <Edit3 className="w-4 h-4" />
+              Editor
             </button>
           </div>
           
           <div className="p-5 flex-1">
-            <CustomizationPanel 
-              settings={settings} 
-              onChange={setSettings} 
-            />
+            {activeTab === "styling" ? (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between pb-2 border-b border-zinc-800/50">
+                  <span className="text-zinc-400 font-medium text-xs">Save current styling as default</span>
+                  <button 
+                    onClick={handleSaveTemplate}
+                    className="p-2 text-zinc-400 hover:text-yellow-400 hover:bg-zinc-900 rounded-lg transition-colors group"
+                    title="Save Template"
+                  >
+                    <Save className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  </button>
+                </div>
+                <CustomizationPanel 
+                  settings={settings} 
+                  onChange={setSettings} 
+                />
+              </div>
+            ) : (
+              <SubtitleEditor
+                transcription={transcription}
+                onChangeTranscription={setTranscription}
+                chunks={chunks}
+                settings={settings}
+              />
+            )}
           </div>
         </aside>
       </div>
