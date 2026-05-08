@@ -214,14 +214,19 @@ export async function exportVideo(
     await ffmpeg.writeFile("Kanit-Fallback.ttf", fallbackData);
   }
 
+  // Ensure dimensions are divisible by 2 (even numbers) for libx264 YUV420p compatibility.
+  // This prevents crashes especially on portrait/vertical mobile videos with odd dimensions.
+  const exportWidth = Math.floor(dims.width / 2) * 2;
+  const exportHeight = Math.floor(dims.height / 2) * 2;
+
   // Provide exact dimensions to ASS generator
-  const assContent = generateAssFile(chunks, settings, dims.width, dims.height);
+  const assContent = generateAssFile(chunks, settings, exportWidth, exportHeight);
   await ffmpeg.writeFile(assName, new TextEncoder().encode(assContent));
 
   // Run FFmpeg command. fontsdir=. so it finds font.ttf in the current working directory
   await ffmpeg.exec([
     '-i', videoName,
-    '-vf', `ass=${assName}:fontsdir=.`,
+    '-vf', `scale=${exportWidth}:${exportHeight},ass=${assName}:fontsdir=.`,
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-threads', '4', // Limit to 4 cores to prevent worker exhaustion/OOM

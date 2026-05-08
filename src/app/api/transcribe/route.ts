@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 // Ensure the user has added GEMINI_API_KEY to their .env.local
 const apiKey = process.env.GEMINI_API_KEY;
@@ -66,6 +66,18 @@ export async function POST(req: NextRequest) {
           ],
           generationConfig: {
             responseMimeType: "application/json",
+            responseSchema: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  word: { type: SchemaType.STRING },
+                  start_time: { type: SchemaType.NUMBER },
+                  end_time: { type: SchemaType.NUMBER }
+                },
+                required: ["word", "start_time", "end_time"]
+              }
+            }
           }
         });
         break; // Success, exit retry loop
@@ -107,10 +119,16 @@ export async function POST(req: NextRequest) {
       cleanJson = cleanJson.replace(/,\s*]/g, ']');
       cleanJson = cleanJson.replace(/,\s*}/g, '}');
       
+      // Remove bad control characters (ASCII 0-31) which break JSON.parse,
+      // but preserve tabs and newlines if they are within strings (though they shouldn't be).
+      cleanJson = cleanJson.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u001F\u007F-\u009F]/g, "");
+      
       transcription = JSON.parse(cleanJson);
-    } catch (parseError) {
-      console.error("Failed to parse Gemini response as JSON. Raw response:", responseText);
-      throw new Error("AI returned invalid JSON. Please try again. Preview: " + responseText.substring(0, 100).replace(/\n/g, ' '));
+    } catch (parseError: any) {
+      console.error("Failed to parse Gemini response as JSON. Error:", parseError.message);
+      console.error("Raw response length:", responseText.length);
+      console.error("Raw response:", responseText);
+      throw new Error(`AI returned invalid JSON. Please try again. Error: ${parseError.message}. Preview: ` + responseText.substring(0, 100).replace(/\n/g, ' '));
     }
 
     return NextResponse.json({ transcription });
