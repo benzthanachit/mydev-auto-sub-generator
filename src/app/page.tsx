@@ -129,20 +129,58 @@ export default function Home() {
     
     setIsExporting(true);
     try {
-      const { exportVideo } = await import('@/lib/ffmpeg-utils');
+      const { exportVideo, generateAssFile, getVideoDimensions } = await import('@/lib/ffmpeg-utils');
+      const dims = await getVideoDimensions(videoFile);
+      const assContent = generateAssFile(chunks, settings, dims.width, dims.height);
+
+      // 1. Try local native server-side export first (utilizes MacBook Pro M4's full CPU/GPU)
+      try {
+        const formData = new FormData();
+        formData.append("video", videoFile);
+        formData.append("ass", assContent);
+
+        const response = await fetch("/api/export", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `subtitled-${videoFile.name || "video.mp4"}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return; // Success, skip browser-side export
+        }
+
+        const errData = await response.json().catch(() => ({}));
+        if (errData.error === "NATIVE_FFMPEG_NOT_FOUND") {
+          console.warn("Native FFmpeg not found on host Mac. Falling back to browser ffmpeg.wasm...");
+        } else if (errData.error) {
+          console.error("Local native export failed:", errData.error);
+        }
+      } catch (nativeErr) {
+        console.warn("Native backend export skipped or failed, falling back to browser-side ffmpeg.wasm...", nativeErr);
+      }
+
+      // 2. Fallback: Browser-side ffmpeg.wasm (safe, high-quality fallback)
       const url = await exportVideo(videoFile, chunks, settings, (progress) => {
         console.log(`Export progress: ${progress.toFixed(1)}%`);
       });
       
       const a = document.createElement("a");
       a.href = url;
-      a.download = "subtitled-video.mp4";
+      a.download = `subtitled-${videoFile.name || "video.mp4"}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Export failed:", error);
-      alert("Export failed. See console for details.");
+      alert(`Export failed: ${error.message || "See console for details."}`);
     } finally {
       setIsExporting(false);
     }

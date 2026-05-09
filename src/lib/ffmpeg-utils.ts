@@ -155,7 +155,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   return header + events;
 }
 
-const getVideoDimensions = (file: File): Promise<{width: number, height: number}> => {
+export const getVideoDimensions = (file: File): Promise<{width: number, height: number}> => {
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.preload = 'metadata';
@@ -228,9 +228,9 @@ export async function exportVideo(
     '-i', videoName,
     '-vf', `scale=${exportWidth}:${exportHeight},ass=${assName}:fontsdir=.`,
     '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-threads', '4', // Limit to 4 cores to prevent worker exhaustion/OOM
-    '-crf', '28', // Lower quality slightly for faster encoding
+    '-preset', 'veryfast', // 'veryfast' is the safest stable preset to prevent WebAssembly OOM
+    '-threads', '4', // 4 threads is the stable browser/Web Workers limit to avoid crash
+    '-crf', '18', // CRF 18 is the reference visually lossless high-quality standard
     '-c:a', 'copy',
     outputName
   ]);
