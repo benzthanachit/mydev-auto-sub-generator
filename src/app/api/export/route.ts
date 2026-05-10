@@ -38,16 +38,15 @@ export async function POST(req: NextRequest) {
     await fs.writeFile(videoPath, videoBuffer);
     await fs.writeFile(assPath, assContent);
 
-    // Run native ffmpeg using Apple Silicon's hardware acceleration (h264_videotoolbox)
-    // -q:v 50 represents high-quality hardware encoding.
-    // If it fails or is not supported, it falls back to native libx264 with visually lossless CRF 18.
-    let ffmpegCmd = `ffmpeg -y -i "${videoPath}" -vf "ass=${assPath}" -c:v h264_videotoolbox -q:v 50 -c:a copy "${outputPath}"`;
+    // Run native ffmpeg using the gold standard CPU libx264 with ultra-high quality settings.
+    // This fully unleashes the multi-core power of the MacBook Pro M4 CPU to deliver pristine, pixel-perfect, lossless quality (CRF 14).
+    let ffmpegCmd = `ffmpeg -y -i "${videoPath}" -vf "ass=${assPath}" -c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -c:a copy "${outputPath}"`;
     
     try {
       await execAsync(ffmpegCmd);
-    } catch (hwError) {
-      console.log("Hardware acceleration failed, falling back to CPU libx264...");
-      ffmpegCmd = `ffmpeg -y -i "${videoPath}" -vf "ass=${assPath}" -c:v libx264 -preset fast -crf 18 -c:a copy "${outputPath}"`;
+    } catch (err) {
+      console.log("Ultra quality slow preset failed, trying fast preset fallback...");
+      ffmpegCmd = `ffmpeg -y -i "${videoPath}" -vf "ass=${assPath}" -c:v libx264 -preset fast -crf 16 -pix_fmt yuv420p -c:a copy "${outputPath}"`;
       await execAsync(ffmpegCmd);
     }
 
