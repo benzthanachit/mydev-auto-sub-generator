@@ -38,9 +38,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${inter.variable} ${roboto.variable} ${kanit.variable} ${prompt.variable} h-full antialiased dark`}
     >
-      <body className={`min-h-full flex flex-col font-sans bg-zinc-950 text-zinc-50`}>
+      <body suppressHydrationWarning className={`min-h-full flex flex-col font-sans bg-zinc-950 text-zinc-50`}>
         {children}
       </body>
     </html>

@@ -4,6 +4,7 @@ export interface TranscriptWord {
   end_time: number;
   hidden?: boolean;
   highlighted?: boolean;
+  segment_id?: number | string;
 }
 
 export interface ChunkedTranscript {

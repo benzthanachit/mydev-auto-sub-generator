@@ -105,6 +105,7 @@ export default function Home() {
             word: String(w.word || ""),
             start_time: parseTime(start),
             end_time: parseTime(end),
+            segment_id: w.segment_id,
           };
         });
 
@@ -186,6 +187,23 @@ export default function Home() {
     }
   };
 
+  const handleExportSRT = () => {
+    if (chunks.length === 0) return;
+    
+    const { generateSRT } = require('@/lib/subtitle-utils');
+    const srtContent = generateSRT(chunks);
+    
+    const blob = new Blob([srtContent], { type: "text/srt" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `subtitles-${videoFile?.name || "video"}.srt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!videoUrl) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center p-8 bg-zinc-950 min-h-screen">
@@ -233,6 +251,15 @@ export default function Home() {
             className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-100 transition-colors"
           >
             New Project
+          </button>
+          
+          <button 
+            onClick={handleExportSRT}
+            disabled={isExporting || chunks.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            Export .SRT
           </button>
           
           <button 
