@@ -13,6 +13,21 @@ export function chunkTranscript(
     if (typeof val === "number") return val;
     if (typeof val === "string") {
       const cleaned = val.trim().replace(/s$/, "");
+      if (cleaned.includes(":")) {
+        const parts = cleaned.split(":");
+        let hours = 0;
+        let minutes = 0;
+        let seconds = 0;
+        if (parts.length === 3) {
+          hours = parseFloat(parts[0]) || 0;
+          minutes = parseFloat(parts[1]) || 0;
+          seconds = parseFloat(parts[2]) || 0;
+        } else if (parts.length === 2) {
+          minutes = parseFloat(parts[0]) || 0;
+          seconds = parseFloat(parts[1]) || 0;
+        }
+        return hours * 3600 + minutes * 60 + seconds;
+      }
       const parsed = parseFloat(cleaned);
       return isNaN(parsed) ? 0 : parsed;
     }
@@ -22,10 +37,14 @@ export function chunkTranscript(
   const normalizedWords: TranscriptWord[] = words.map((w: any) => {
     const start = w.start_time !== undefined ? w.start_time : (w.startTime !== undefined ? w.startTime : w.start);
     const end = w.end_time !== undefined ? w.end_time : (w.endTime !== undefined ? w.endTime : w.end);
+    
+    const finalStart = parseTime(start);
+    const finalEnd = parseTime(end);
+    
     return {
       word: String(w.word || ""),
-      start_time: parseTime(start),
-      end_time: parseTime(end),
+      start_time: finalStart,
+      end_time: finalEnd,
       hidden: w.hidden ?? false,
       highlighted: w.highlighted ?? true, // Default to true so words are highlighted when spoken unless deselected
     };
