@@ -17,6 +17,7 @@ export default function Home() {
   const [settings, setSettings] = useState<CaptionSettings>(DEFAULT_SETTINGS);
   
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionStatus, setTranscriptionStatus] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
   const [activeTab, setActiveTab] = useState<"styling" | "editor">("styling");
   
@@ -57,65 +58,105 @@ export default function Home() {
     if (!videoFile) return;
     
     setIsTranscribing(true);
+    setTranscriptionStatus("Extracting audio...");
     try {
-      // First, extract audio from the video to save bandwidth and prevent server OOM
-      const { extractAudio } = await import('@/lib/ffmpeg-utils');
+      // Extract audio chunks from the video in 60-second intervals to prevent Gemini limits/drift
+      const { extractAudioChunks } = await import('@/lib/ffmpeg-utils');
       console.log("Extracting audio from video...");
-      const audioFile = await extractAudio(videoFile, (progress) => {
-        console.log(`Audio extraction progress: ${progress.toFixed(1)}%`);
+      const audioChunks = await extractAudioChunks(videoFile, (progress) => {
+        setTranscriptionStatus(`Extracting audio: ${progress.toFixed(0)}%`);
       });
-      console.log("Audio extracted successfully, uploading to server...");
+      console.log(`Audio extracted successfully into ${audioChunks.length} chunks. Starting transcription...`);
 
-      const formData = new FormData();
-      formData.append("file", audioFile);
-      
-      const response = await fetch("/api/transcribe", {
-        method: "POST",
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        let errorMessage = "Failed to transcribe";
-        try {
-          const errData = await response.json();
-          if (errData.error) errorMessage = errData.error;
-        } catch (e) {
-          // ignore
-        }
-        throw new Error(errorMessage);
-      }
-      
-      const data = await response.json();
-      if (data.transcription) {
-        const parseTime = (val: any): number => {
-          if (val === null || val === undefined) return 0;
-          if (typeof val === "number") return val;
-          if (typeof val === "string") {
-            const cleaned = val.trim().replace(/s$/, "");
-            const parsed = parseFloat(cleaned);
-            return isNaN(parsed) ? 0 : parsed;
+      const allWords: TranscriptWord[] = [];
+      const parseTime = (val: any): number => {
+        if (val === null || val === undefined) return 0;
+        if (typeof val === "number") return val;
+        if (typeof val === "string") {
+          const cleaned = val.trim().replace(/s$/, "");
+          if (cleaned.includes(":")) {
+            const parts = cleaned.split(":");
+            let hours = 0;
+            let minutes = 0;
+            let seconds = 0;
+            if (parts.length === 3) {
+              hours = parseFloat(parts[0]) || 0;
+              minutes = parseFloat(parts[1]) || 0;
+              seconds = parseFloat(parts[2]) || 0;
+            } else if (parts.length === 2) {
+              minutes = parseFloat(parts[0]) || 0;
+              seconds = parseFloat(parts[1]) || 0;
+            }
+            return hours * 3600 + minutes * 60 + seconds;
           }
-          return 0;
-        };
+          const parsed = parseFloat(cleaned);
+          return isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+      };
 
-        const normalized: TranscriptWord[] = data.transcription.map((w: any) => {
-          const start = w.start_time !== undefined ? w.start_time : (w.startTime !== undefined ? w.startTime : w.start);
-          const end = w.end_time !== undefined ? w.end_time : (w.endTime !== undefined ? w.endTime : w.end);
-          return {
-            word: String(w.word || ""),
-            start_time: parseTime(start),
-            end_time: parseTime(end),
-          };
+      for (let i = 0; i < audioChunks.length; i++) {
+        setTranscriptionStatus(`Transcribing part ${i + 1} of ${audioChunks.length}...`);
+        console.log(`Uploading chunk ${i + 1}/${audioChunks.length} to server...`);
+        const chunk = audioChunks[i];
+        
+        const formData = new FormData();
+        formData.append("file", chunk);
+        
+        const response = await fetch("/api/transcribe", {
+          method: "POST",
+          body: formData,
+          cache: "no-store",
         });
+        
+        if (!response.ok) {
+          let errorMessage = `Failed to transcribe chunk ${i + 1}`;
+          try {
+            const errData = await response.json();
+            if (errData.error) errorMessage = errData.error;
+          } catch (e) {
+            // ignore
+          }
+          throw new Error(errorMessage);
+        }
+        
+        const data = await response.json();
+        if (data.transcription && Array.isArray(data.transcription)) {
+          const chunkOffset = i * 60.0;
+          const chunkWords: TranscriptWord[] = data.transcription.map((w: any) => {
+            const start = w.start_time !== undefined ? w.start_time : (w.startTime !== undefined ? w.startTime : w.start);
+            const end = w.end_time !== undefined ? w.end_time : (w.endTime !== undefined ? w.endTime : w.end);
+            
+            const parsedStart = parseTime(start);
+            const parsedEnd = parseTime(end);
+            
+            // Shift timestamps by the chunk index offset (60.0s per chunk)
+            const finalStart = Math.round((parsedStart + chunkOffset) * 1000) / 1000;
+            const finalEnd = Math.round((parsedEnd + chunkOffset) * 1000) / 1000;
+            
+            return {
+              word: String(w.word || ""),
+              start_time: finalStart,
+              end_time: finalEnd,
+            };
+          });
+          
+          allWords.push(...chunkWords);
+        }
+      }
 
-        setTranscription(normalized);
+      if (allWords.length > 0) {
+        setTranscription(allWords);
         setActiveTab("editor");
+      } else {
+        throw new Error("No transcription data returned from AI.");
       }
     } catch (error: any) {
       console.error("Transcription error:", error);
       alert(`Transcription failed: ${error.message || "See console for details."}`);
     } finally {
       setIsTranscribing(false);
+      setTranscriptionStatus("");
     }
   };
 
@@ -268,7 +309,7 @@ export default function Home() {
                 {isTranscribing ? (
                   <>
                     <Loader2 className="w-5 h-5 animate-spin" />
-                    Transcribing with Gemini...
+                    {transcriptionStatus || "Transcribing with Gemini..."}
                   </>
                 ) : (
                   <>

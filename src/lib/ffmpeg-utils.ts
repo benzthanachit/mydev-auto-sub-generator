@@ -286,3 +286,60 @@ export async function extractAudio(videoFile: File, onProgress: (p: number) => v
   
   return file;
 }
+
+export async function extractAudioChunks(
+  videoFile: File,
+  onProgress: (p: number) => void
+): Promise<File[]> {
+  const ffmpeg = new FFmpeg();
+  const baseURL = 'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd';
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+  });
+
+  const progressHandler = ({ progress }: { progress: number }) => {
+    onProgress(progress * 100);
+  };
+  ffmpeg.on('progress', progressHandler);
+
+  const videoName = 'input.mp4';
+  await ffmpeg.writeFile(videoName, await fetchFile(videoFile));
+
+  // Extract mono MP3 audio downsampled to 16kHz and segmented into 60-second blocks
+  await ffmpeg.exec([
+    '-i', videoName,
+    '-vn', // No video
+    '-acodec', 'libmp3lame',
+    '-ar', '16000', // 16kHz is perfect for speech recognition
+    '-ac', '1', // Mono
+    '-b:a', '64k', // Low bitrate to save memory/upload time
+    '-f', 'segment',
+    '-segment_time', '60',
+    'chunk_%d.mp3'
+  ]);
+
+  ffmpeg.off('progress', progressHandler);
+
+  const chunks: File[] = [];
+  let index = 0;
+  while (true) {
+    try {
+      const chunkName = `chunk_${index}.mp3`;
+      const data = await ffmpeg.readFile(chunkName);
+      const blob = new Blob([data as any], { type: 'audio/mp3' });
+      const file = new File([blob], `audio_chunk_${index}.mp3`, { type: 'audio/mp3' });
+      chunks.push(file);
+      index++;
+    } catch (e) {
+      // When readFile throws an error, it means we have read all available chunks
+      break;
+    }
+  }
+
+  ffmpeg.terminate(); // Free memory and Web Workers
+  
+  return chunks;
+}
+
